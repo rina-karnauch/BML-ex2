@@ -144,8 +144,9 @@ class BayesianLinearRegression:
         :param X: the samples around which to calculate the standard deviation
         :return: a numpy array with the standard deviations (same shape as X)
         """
-        # <your code here>
-        return None
+        H_x = self._bf(X)
+        std = np.array([np.sqrt((h_x.T @ self._C_theta_D @ h_x) + self._sig) for h_x in H_x])
+        return std
 
     def posterior_sample(self, X: np.ndarray) -> np.ndarray:
         """
@@ -153,8 +154,14 @@ class BayesianLinearRegression:
         :param X: the samples to predict
         :return: the predictions for X
         """
-        # <your code here>
-        return None
+        # mu = _theta_MMSE, cov = C_theta_D
+        random_f = np.random.multivariate_normal(self._theta_MMSE, self._C_theta_D, 5)
+        H_x = self._bf(X)
+        prediction = np.array([H_x @ r_f for r_f in random_f])
+        return prediction
+
+    def get_MMSE(self):
+        return self._theta_MMSE
 
 
 class LinearRegression:
@@ -216,12 +223,15 @@ def gaussian_noise_getter(sigma: float, n: int):
 
 
 def plot_prior(mu, cov, pbf, deg):
-    plot_colors = ["mediumpurple", "purple", "rebeccapurple", "indigo", "darkorchid"]
     x = np.arange(0, 24, 0.1)
     H_x = pbf(x)
     y = H_x @ mu
     ci = [np.sqrt(h_x.T @ cov @ h_x + SIGMA) for h_x in H_x]
+    plot_dist(x, y, ci, H_x, mu, cov, deg)
 
+
+def plot_dist(x, y, ci, H_x, mu, cov, deg):
+    plot_colors = ["mediumpurple", "purple", "rebeccapurple", "indigo", "darkorchid"]
     plt.figure()
     plt.fill_between(x, y - ci, y + ci, color="thistle", alpha=.5, label='confidence interval')
 
@@ -233,7 +243,7 @@ def plot_prior(mu, cov, pbf, deg):
     plt.legend()
     plt.xlabel(r'$hour$')
     plt.ylabel(r'$temperature$')
-    plt.title("bayesian linear regression temperature predictions, deg:" + str(deg))
+    plt.title("bayesian linear regression, prior distribution, deg:" + str(deg))
     plt.show()
 
 
@@ -255,14 +265,15 @@ def main():
         y_predicted = ln.predict(test_hours)
 
         # print average squared error performance
-        print(f'Average squared error with LR and d={d} is {np.mean((test - y_predicted) ** 2):.2f}')
+        SE = np.mean((test - y_predicted) ** 2)
+        print(f'Average squared error with LR and d={d} is {SE:.2f}')
 
         # plot graphs for linear regression part
         plt.plot(test_hours, y_predicted, color="slategrey", label="prediction")
         plt.scatter(test_hours, test, color="powderblue", label="test set")
         plt.scatter(train_hours, train, color="slategray", label="train set")
         plt.legend()
-        plt.title("linear regression temperature predictions, deg:" + str(d))
+        plt.title("linear regression temperature predictions, deg:" + str(d) + " E:" + "{:.2f}".format(SE))
         plt.xlabel(r'$hour$')
         plt.ylabel(r'$temperature$')
         plt.show()
@@ -299,6 +310,41 @@ def main():
 
         # plot posterior graphs
         blr = BayesianLinearRegression(mu, cov, sigma, pbf)
+
+        # train model
+        blr.fit_predict(train_hours, train)
+        y_predicted = blr.predict(test_hours)
+        train_predicted = blr.predict(train_hours)
+        ci = blr.predict_std(test)
+        ci_t = blr.predict_std(train)
+        posterior_samples = blr.posterior_sample(test_hours)
+        posterior_samples_t = blr.posterior_sample(train_hours)
+
+        # print average squared error performance
+        SE = np.mean((test - y_predicted) ** 2)
+        print(f'Average squared error with LR and d={deg} is {SE:.2f}')
+
+        # plot everything
+        plot_colors = ["mediumseagreen", "forestgreen", "olivedrab", "seagreen", "green"]
+        plt.figure()
+        plt.title("bayesian linear regression, prior distribution, deg:" + str(deg) + " E:" + "{:.2f}".format(SE))
+        plt.fill_between(test_hours, y_predicted - ci, y_predicted + ci, color="palegreen", alpha=.5,
+                         label='confidence interval')
+        plt.fill_between(train_hours, train_predicted - ci_t, train_predicted + ci_t, color="palegreen", alpha=.5,
+                         label='confidence interval')
+        for i, p in enumerate(posterior_samples):
+            plt.plot(test_hours, p, color=plot_colors[i])
+        for i, p_t in enumerate(posterior_samples_t):
+            plt.plot(train_hours, p_t, color=plot_colors[i])
+        plt.plot(test_hours, y_predicted, 'k', lw=2, label='MMSE prediction')
+        plt.scatter(test_hours, test, label='test data', color="darkolivegreen")
+        plt.scatter(train_hours, train, label='train data', color="yellowgreen")
+        plt.legend()
+        plt.xlabel(r'$hour$')
+        plt.ylabel(r'$temperature$')
+        plt.xlim([0, 24])
+
+        plt.show()
 
     # ---------------------- Gaussian basis functions
     for ind, c in enumerate(centers):
