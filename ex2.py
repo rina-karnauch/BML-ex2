@@ -68,8 +68,8 @@ def learn_prior(hours: np.ndarray, temps: np.ndarray, basis_func: Callable) -> t
     # iterate over all past years
     for i, t in enumerate(temps):
         ln = LinearRegression(basis_func).fit(hours, t)
-        # todo <your code here>
-        thetas.append(None)  # append learned parameters here
+        theta_i = ln.get_theta()
+        thetas.append(theta_i)  # append learned parameters here
 
     thetas = np.array(thetas)
 
@@ -89,8 +89,17 @@ class BayesianLinearRegression:
         :param sig:                 the signal noise to use when fitting the model
         :param basis_functions:     a function that receives data points as inputs and returns a design matrix
         """
-        # <your code here>
-        pass
+        self._theta_mean = theta_mean
+        self._theta_cov = theta_cov
+        self._sig = sig
+        self._bf = basis_functions
+        self._H = None
+        self._posterior_mean = None
+        self._posterior_cov = None
+        self._inv_cov_mu = None
+        self._sigma_HT_y = None
+        self._C_theta_D = None
+        self._theta_MMSE = None
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> 'BayesianLinearRegression':
         """
@@ -99,7 +108,14 @@ class BayesianLinearRegression:
         :param y: the true regression values for the samples X
         :return: the fitted model
         """
-        # <your code here>
+        self._H = self._bf(X)
+        _HT = np.transpose(self._H)
+        _inv_cov = np.linalg.inv(self._theta_cov)
+        self._inv_cov_mu = _inv_cov @ self._theta_mean
+        self._sigma_HT_y = (1 / self._sig) * (_HT @ y)
+        _I = np.identity(len(self._theta_cov))
+        self._C_theta_D = np.linalg.solve(_inv_cov + (1 / self._sig) * _HT @ self._H, _I)
+        self._theta_MMSE = self._C_theta_D @ (self._sigma_HT_y + self._inv_cov_mu)
         return self
 
     def predict(self, X: np.ndarray) -> np.ndarray:
@@ -108,8 +124,9 @@ class BayesianLinearRegression:
         :param X: the samples to predict
         :return: the predictions for X
         """
-        # <your code here>
-        return None
+        H_x = self._bf(X)
+        y_predicted = H_x @ self._theta_MMSE
+        return y_predicted
 
     def fit_predict(self, X: np.ndarray, y: np.ndarray) -> np.ndarray:
         """
@@ -177,7 +194,7 @@ class LinearRegression:
         :return: the predictions for X
         """
         H_x = self._bf(X)
-        y_predicted = H_x @ self._thetaMLE
+        y_predicted = H_x @ self._thetaMLE + self._noise
         return y_predicted
 
     def fit_predict(self, X: np.ndarray, y: np.ndarray) -> np.ndarray:
@@ -190,9 +207,34 @@ class LinearRegression:
         self.fit(X, y)
         return self.predict(X)
 
+    def get_theta(self):
+        return self._thetaMLE
+
 
 def gaussian_noise_getter(sigma: float, n: int):
     return np.random.multivariate_normal(np.zeros(shape=n), np.diag([sigma] * n))
+
+
+def plot_prior(mu, cov, pbf, deg):
+    plot_colors = ["mediumpurple", "purple", "rebeccapurple", "indigo", "darkorchid"]
+    x = np.arange(0, 24, 0.1)
+    H_x = pbf(x)
+    y = H_x @ mu
+    ci = [np.sqrt(h_x.T @ cov @ h_x + SIGMA) for h_x in H_x]
+
+    plt.figure()
+    plt.fill_between(x, y - ci, y + ci, color="thistle", alpha=.5, label='confidence interval')
+
+    random_f = np.random.multivariate_normal(mu, cov, 5)
+    for i, f in enumerate(random_f):
+        prediction_f = H_x @ f
+        plt.plot(x, prediction_f, label=('random function #' + str(i)), color=plot_colors[i])
+    plt.plot(x, y, 'k', lw=2, label='prior mean')
+    plt.legend()
+    plt.xlabel(r'$hour$')
+    plt.ylabel(r'$temperature$')
+    plt.title("bayesian linear regression temperature predictions, deg:" + str(deg))
+    plt.show()
 
 
 def main():
@@ -216,9 +258,13 @@ def main():
         print(f'Average squared error with LR and d={d} is {np.mean((test - y_predicted) ** 2):.2f}')
 
         # plot graphs for linear regression part
-        plt.plot(test_hours, y_predicted, color="gainsboro")
-        plt.scatter(test_hours, test, color="royalblue")
-        plt.scatter(train_hours, train, color="peachpuff")
+        plt.plot(test_hours, y_predicted, color="slategrey", label="prediction")
+        plt.scatter(test_hours, test, color="powderblue", label="test set")
+        plt.scatter(train_hours, train, color="slategray", label="train set")
+        plt.legend()
+        plt.title("linear regression temperature predictions, deg:" + str(d))
+        plt.xlabel(r'$hour$')
+        plt.ylabel(r'$temperature$')
         plt.show()
 
     # ----------------------------------------- Bayesian Linear Regression
@@ -248,13 +294,11 @@ def main():
         pbf = polynomial_basis_functions(deg)
         mu, cov = learn_prior(hours, temps, pbf)
 
-        blr = BayesianLinearRegression(mu, cov, sigma, pbf)
-
         # plot prior graphs
-        # <your code here>
+        plot_prior(mu, cov, pbf, deg)
 
         # plot posterior graphs
-        # <your code here>
+        blr = BayesianLinearRegression(mu, cov, sigma, pbf)
 
     # ---------------------- Gaussian basis functions
     for ind, c in enumerate(centers):
@@ -267,6 +311,7 @@ def main():
         # <your code here>
 
         # plot posterior graphs
+        blr.fit(train_hours, train)
         # <your code here>
 
     # ---------------------- cubic regression splines
