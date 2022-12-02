@@ -33,8 +33,15 @@ def gaussian_basis_functions(centers: np.ndarray, beta: float) -> Callable:
     """
 
     def gbf(x: np.ndarray):
-        # <your code here>
-        return None
+        new_centers = centers
+        np.insert(new_centers, 0, 0)
+        design_matrix = np.empty(shape=(len(x), len(centers)))
+        for c_i, c in enumerate(centers):
+            exp_f = lambda t: (-1 * pow((t - c), 2)) / (2 * pow(beta, 2))
+            for x_i, x_v in enumerate(x):
+                exp_val = exp_f(x_v) if c_i > 0 else 0
+                design_matrix[x_i, c_i] = np.exp(exp_val)
+        return design_matrix
 
     return gbf
 
@@ -222,15 +229,15 @@ def gaussian_noise_getter(sigma: float, n: int):
     return np.random.multivariate_normal(np.zeros(shape=n), np.diag([sigma] * n))
 
 
-def plot_prior(mu, cov, pbf, deg):
+def plot_prior(mu, cov, f, p):
     x = np.arange(0, 24, 0.1)
-    H_x = pbf(x)
+    H_x = f(x)
     y = H_x @ mu
     ci = [np.sqrt(h_x.T @ cov @ h_x + SIGMA) for h_x in H_x]
-    plot_dist(x, y, ci, H_x, mu, cov, deg)
+    plot_dist(x, y, ci, H_x, mu, cov, p)
 
 
-def plot_dist(x, y, ci, H_x, mu, cov, deg):
+def plot_dist(x, y, ci, H_x, mu, cov, p):
     plot_colors = ["mediumpurple", "purple", "rebeccapurple", "indigo", "darkorchid"]
     plt.figure()
     plt.fill_between(x, y - ci, y + ci, color="thistle", alpha=.5, label='confidence interval')
@@ -243,27 +250,30 @@ def plot_dist(x, y, ci, H_x, mu, cov, deg):
     plt.legend()
     plt.xlabel(r'$hour$')
     plt.ylabel(r'$temperature$')
-    plt.title("bayesian linear regression, prior distribution, deg:" + str(deg))
+    plt.title(f"bayesian linear regression, prior distribution, {p}")
     plt.show()
 
-def plot_bayesian_model(model, train_hours, train, test_hours, test, deg, label):
+
+def plot_bayesian_model(model, train_hours, train, test_hours, test, parameter, label):
     # train model
-    model.fit_predict(train_hours, train)
+    model.fit(train_hours, train)
     y_predicted = model.predict(test_hours)
     train_predicted = model.predict(train_hours)
+
     ci = model.predict_std(test)
     ci_t = model.predict_std(train)
+
     posterior_samples = model.posterior_sample(test_hours)
     posterior_samples_t = model.posterior_sample(train_hours)
 
     # print average squared error performance
     SE = np.mean((test - y_predicted) ** 2)
-    print(f'Average squared error with LR and d={deg} is {SE:.2f}')
+    print(f'Average squared error with LR and {parameter} is {SE:.2f}')
 
     # plot everything
     plot_colors = ["mediumseagreen", "forestgreen", "olivedrab", "seagreen", "green"]
     plt.figure()
-    plt.title(label + " :bayesian linear regression, prior distribution, deg:" + str(deg) + " E:" + "{:.2f}".format(SE))
+    plt.title(label + f" :bayesian linear regression, prior distribution, {parameter}" + " E:" + "{:.2f}".format(SE))
     plt.fill_between(test_hours, y_predicted - ci, y_predicted + ci, color="palegreen", alpha=.5,
                      label='confidence interval')
     plt.fill_between(train_hours, train_predicted - ci_t, train_predicted + ci_t, color="palegreen", alpha=.5,
@@ -282,6 +292,26 @@ def plot_bayesian_model(model, train_hours, train, test_hours, test, deg, label)
 
     plt.show()
 
+
+def train_and_plot_linear_regression(f: Callable, d: int, train_hours, train, test_hours, test, label):
+    ln = LinearRegression(f(d)).fit(train_hours, train)
+    y_predicted = ln.predict(test_hours)
+
+    # print average squared error performance
+    SE = np.mean((test - y_predicted) ** 2)
+    print(f'Average squared error with LR and d={d} is {SE:.2f}')
+
+    # plot graphs for linear regression part
+    plt.plot(test_hours, y_predicted, color="slategrey", label="prediction")
+    plt.scatter(test_hours, test, color="powderblue", label="test set")
+    plt.scatter(train_hours, train, color="slategray", label="train set")
+    plt.legend()
+    plt.title(label + " linear regression temperature predictions, deg:" + str(d) + " E:" + "{:.2f}".format(SE))
+    plt.xlabel(r'$hour$')
+    plt.ylabel(r'$temperature$')
+    plt.show()
+
+
 def main():
     # load the data for November 16 2020
     nov16 = np.load('nov162020.npy')
@@ -296,22 +326,25 @@ def main():
 
     # ----------------------------------------- Classical Linear Regression
     for d in degrees:
-        ln = LinearRegression(polynomial_basis_functions(d)).fit(train_hours, train)
-        y_predicted = ln.predict(test_hours)
+        train_and_plot_linear_regression(polynomial_basis_functions, d, train_hours, train, test_hours, test,
+                                         "polynomial")
 
-        # print average squared error performance
-        SE = np.mean((test - y_predicted) ** 2)
-        print(f'Average squared error with LR and d={d} is {SE:.2f}')
-
-        # plot graphs for linear regression part
-        plt.plot(test_hours, y_predicted, color="slategrey", label="prediction")
-        plt.scatter(test_hours, test, color="powderblue", label="test set")
-        plt.scatter(train_hours, train, color="slategray", label="train set")
-        plt.legend()
-        plt.title("linear regression temperature predictions, deg:" + str(d) + " E:" + "{:.2f}".format(SE))
-        plt.xlabel(r'$hour$')
-        plt.ylabel(r'$temperature$')
-        plt.show()
+        # ln = LinearRegression(polynomial_basis_functions(d)).fit(train_hours, train)
+        # y_predicted = ln.predict(test_hours)
+        #
+        # # print average squared error performance
+        # SE = np.mean((test - y_predicted) ** 2)
+        # print(f'Average squared error with LR and d={d} is {SE:.2f}')
+        #
+        # # plot graphs for linear regression part
+        # plt.plot(test_hours, y_predicted, color="slategrey", label="prediction")
+        # plt.scatter(test_hours, test, color="powderblue", label="test set")
+        # plt.scatter(train_hours, train, color="slategray", label="train set")
+        # plt.legend()
+        # plt.title("linear regression temperature predictions, deg:" + str(d) + " E:" + "{:.2f}".format(SE))
+        # plt.xlabel(r'$hour$')
+        # plt.ylabel(r'$temperature$')
+        # plt.show()
 
     # ----------------------------------------- Bayesian Linear Regression
 
@@ -323,12 +356,12 @@ def main():
     # setup the model parameters
     sigma = 0.25
     degrees = [3, 7]  # polynomial basis functions degrees
-    beta = 2.5  # lengthscale for Gaussian basis functions
+    beta = 3  # lengthscale for Gaussian basis functions
 
     # sets of centers S_1, S_2, and S_3
     centers = [np.array([6, 12, 18]),
                np.array([4, 8, 12, 16, 20]),
-               np.array([3, 6, 9, 12, 15, 18, 21])]
+               np.array([2, 4, 8, 12, 16, 20, 22])]
 
     # sets of knots K_1, K_2 and K_3 for the regression splines
     knots = [np.array([12]),
@@ -341,12 +374,12 @@ def main():
         mu, cov = learn_prior(hours, temps, pbf)
 
         # plot prior graphs
-        plot_prior(mu, cov, pbf, deg)
+        plot_prior(mu, cov, pbf, f'deg={deg}')
 
         # plot posterior graphs
         blr = BayesianLinearRegression(mu, cov, sigma, pbf)
 
-        plot_bayesian_model(blr, train_hours, train, test_hours, test, deg, "polynomials")
+        plot_bayesian_model(blr, train_hours, train, test_hours, test, f'deg={deg} ', "polynomials")
 
         # # train model
         # blr.fit_predict(train_hours, train)
@@ -391,11 +424,10 @@ def main():
         blr = BayesianLinearRegression(mu, cov, sigma, rbf)
 
         # plot prior graphs
-        # <your code here>
+        plot_prior(mu, cov, rbf, f'S{ind + 1}')
 
         # plot posterior graphs
-        blr.fit(train_hours, train)
-        # <your code here>
+        plot_bayesian_model(blr, train_hours, train, test_hours, test, f'S{ind + 1} ', "gaussians")
 
     # ---------------------- cubic regression splines
     for ind, k in enumerate(knots):
@@ -405,10 +437,10 @@ def main():
         blr = BayesianLinearRegression(mu, cov, sigma, spline)
 
         # plot prior graphs
-        # <your code here>
+        plot_prior(mu, cov, spline, f'K{ind + 1}')
 
         # plot posterior graphs
-        # <your code here>
+        plot_bayesian_model(blr, train_hours, train, test_hours, test, f'K{ind + 1} ', "Spline")
 
 
 if __name__ == '__main__':
