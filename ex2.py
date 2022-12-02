@@ -55,8 +55,16 @@ def spline_basis_functions(knots: np.ndarray) -> Callable:
     """
 
     def csbf(x: np.ndarray):
-        # <your code here>
-        return None
+        design_matrix = np.empty(shape=(len(x), len(knots) + 4))
+        for i in range(4):
+            for x_i, x_v in enumerate(x):
+                design_matrix[x_i, i] = pow(x_v, i)
+        for c_i, c in enumerate(knots):
+            knot_f = lambda t: 0 if (t - c) < 0 else pow(t - c, 3)
+            for x_i, x_v in enumerate(x):
+                knot_f_val = knot_f(x_v)
+                design_matrix[x_i, c_i + 4] = knot_f_val
+        return design_matrix
 
     return csbf
 
@@ -445,3 +453,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    print("done")
