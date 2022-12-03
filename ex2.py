@@ -33,14 +33,12 @@ def gaussian_basis_functions(centers: np.ndarray, beta: float) -> Callable:
     """
 
     def gbf(x: np.ndarray):
-        new_centers = centers
-        np.insert(new_centers, 0, 0)
-        design_matrix = np.empty(shape=(len(x), len(centers)))
-        for c_i, c in enumerate(centers):
-            exp_f = lambda t: (-1 * pow((t - c), 2)) / (2 * pow(beta, 2))
+        new_centers = np.array([0] + list(centers))
+        design_matrix = np.empty(shape=(len(x), len(new_centers)), dtype=np.float32)
+        for c_i, c in enumerate(new_centers):
             for x_i, x_v in enumerate(x):
-                exp_val = exp_f(x_v) if c_i > 0 else 0
-                design_matrix[x_i, c_i] = np.exp(exp_val)
+                exp_val = (((x_v - c) ** 2) / (2 * (beta ** 2))) if c_i > 0 else 0
+                design_matrix[x_i, c_i] = np.exp(-exp_val)
         return design_matrix
 
     return gbf
@@ -216,7 +214,8 @@ class LinearRegression:
         :return: the predictions for X
         """
         H_x = self._bf(X)
-        y_predicted = H_x @ self._thetaMLE + self._noise
+        y_predicted = H_x @ self._thetaMLE \
+            # + self._noise
         return y_predicted
 
     def fit_predict(self, X: np.ndarray, y: np.ndarray) -> np.ndarray:
@@ -275,7 +274,7 @@ def plot_bayesian_model(model, train_hours, train, test_hours, test, parameter, 
     posterior_samples_t = model.posterior_sample(train_hours)
 
     # print average squared error performance
-    SE = np.mean((test - y_predicted) ** 2)
+    SE = np.mean((test - y_predicted)**2)
     print(f'Average squared error with BLR and {parameter} is {SE:.2f}')
 
     # plot everything
@@ -337,7 +336,6 @@ def main():
         train_and_plot_linear_regression(polynomial_basis_functions, d, train_hours, train, test_hours, test,
                                          "polynomial")
 
-
     # ----------------------------------------- Bayesian Linear Regression
 
     # load the historic data
@@ -348,7 +346,7 @@ def main():
     # setup the model parameters
     sigma = 0.25
     degrees = [3, 7]  # polynomial basis functions degrees
-    beta = 3  # lengthscale for Gaussian basis functions
+    beta = 2.5  # lengthscale for Gaussian basis functions
 
     # sets of centers S_1, S_2, and S_3
     centers = [np.array([6, 12, 18]),
@@ -361,6 +359,7 @@ def main():
              np.array([6, 12, 18])]
 
     # ---------------------- polynomial basis functions
+
     for deg in degrees:
         pbf = polynomial_basis_functions(deg)
         mu, cov = learn_prior(hours, temps, pbf)
@@ -373,8 +372,8 @@ def main():
 
         plot_bayesian_model(blr, train_hours, train, test_hours, test, f'deg={deg} ', "polynomials")
 
-
     # ---------------------- Gaussian basis functions
+
     for ind, c in enumerate(centers):
         rbf = gaussian_basis_functions(c, beta)
         mu, cov = learn_prior(hours, temps, rbf)
@@ -388,6 +387,7 @@ def main():
         plot_bayesian_model(blr, train_hours, train, test_hours, test, f'S{ind + 1} ', "gaussians")
 
     # ---------------------- cubic regression splines
+
     for ind, k in enumerate(knots):
         spline = spline_basis_functions(k)
         mu, cov = learn_prior(hours, temps, spline)
