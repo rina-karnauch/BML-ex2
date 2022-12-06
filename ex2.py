@@ -346,7 +346,7 @@ def main():
     # setup the model parameters
     sigma = 0.25
     degrees = [3, 7]  # polynomial basis functions degrees
-    beta = 2.5  # lengthscale for Gaussian basis functions
+    beta = 3  # lengthscale for Gaussian basis functions
 
     # sets of centers S_1, S_2, and S_3
     centers = [np.array([6, 12, 18]),
